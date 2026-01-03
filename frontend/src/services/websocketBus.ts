@@ -23,12 +23,17 @@ export class WebSocketBus {
 
   private websocketUrl(): string {
     const url = new URL(this.config.url);
-    url.searchParams.set("auth_token", this.config.token);
+    // Only add auth_token if token is provided (backend doesn't require it)
+    if (this.config.token) {
+      url.searchParams.set("auth_token", this.config.token);
+    }
+    console.log("Connecting to WebSocket URL:", url.toString());
     return url.toString();
   }
 
   public async connect(): Promise<WebSocket> {
     const wsUrl = this.websocketUrl();
+    console.log("Creating WebSocket connection to:", wsUrl);
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onmessage = (event: MessageEvent) => {
