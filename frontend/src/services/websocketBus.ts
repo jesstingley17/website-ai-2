@@ -33,7 +33,13 @@ export class WebSocketBus {
 
     this.ws.onmessage = (event: MessageEvent) => {
       try {
-        const rawMessage = JSON.parse(event.data);
+        // Handle both string and object data (some WebSocket implementations auto-parse JSON)
+        let rawMessage: any;
+        if (typeof event.data === 'string') {
+          rawMessage = JSON.parse(event.data);
+        } else {
+          rawMessage = event.data;
+        }
         console.log("Received WebSocket message:", rawMessage);
 
         const message = this.convertRawMessage(rawMessage);
