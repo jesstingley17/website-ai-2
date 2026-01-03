@@ -99,7 +99,7 @@ const Create = () => {
         console.log("Processing INIT message:", id);
       }
 
-      if (typeof message.data.url === "string" && message.data.sandbox_id) {
+      if (typeof message.data.url === "string") {
         setIframeUrl(message.data.url);
         setIframeError(false);
       }
