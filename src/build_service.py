@@ -4,6 +4,7 @@ import asyncio
 import json
 import subprocess
 import time
+import uuid
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Callable, AsyncGenerator
