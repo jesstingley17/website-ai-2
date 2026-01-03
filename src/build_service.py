@@ -115,6 +115,25 @@ class BuildService:
         except Exception as e:
             print(f"Error broadcasting build error: {e}")
     
+    async def _broadcast_preview_ready(self, session_id: str):
+        """Broadcast preview ready notification (for hot reloading)."""
+        try:
+            ws_manager = get_websocket_manager()
+            message = {
+                "id": str(uuid.uuid4()),
+                "type": "preview_ready",
+                "data": {
+                    "message": "Preview updated and ready",
+                    "url": f"{config.BACKEND_URL}/preview/{session_id}",
+                    "session_id": session_id,
+                },
+                "timestamp": int(time.time() * 1000),
+                "session_id": session_id,
+            }
+            await ws_manager.broadcast_to_session(session_id, message)
+        except Exception as e:
+            print(f"Error broadcasting preview ready: {e}")
+    
     def set_progress_callback(self, session_id: str, callback: Callable):
         """Set a callback for build progress updates."""
         self.build_progress_callbacks[session_id] = callback
@@ -287,6 +306,9 @@ class BuildService:
             
             # Broadcast build completion (real-time update!)
             asyncio.create_task(self._broadcast_build_completion(session_id, build_time))
+            
+            # Broadcast preview ready notification (for hot reloading!)
+            asyncio.create_task(self._broadcast_preview_ready(session_id))
             
             return {
                 "status": BuildStatus.SUCCESS.value,

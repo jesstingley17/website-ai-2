@@ -15,12 +15,34 @@ from .config import config, Config
 from .code_executor import code_executor
 from .build_service import build_service
 from .websocket_manager import websocket_manager
+from .file_watcher import file_watcher
 
 # Validate configuration on startup
 Config.validate()
 
 # Global agent instance
 agent_instance: Agent | None = None
+
+
+async def on_file_change(session_id: str):
+    """Callback for file changes - triggers rebuild and notifies clients."""
+    try:
+        # Broadcast file change notification
+        await websocket_manager.broadcast_to_session(session_id, {
+            "id": str(uuid.uuid4()),
+            "type": "file_changed",
+            "data": {
+                "message": "Files changed, rebuilding...",
+                "session_id": session_id,
+            },
+            "timestamp": int(time.time() * 1000),
+            "session_id": session_id,
+        })
+        
+        # Queue rebuild
+        await build_service.queue_build(session_id, force_rebuild=True)
+    except Exception as e:
+        print(f"Error handling file change for session {session_id}: {e}")
 
 
 @asynccontextmanager
@@ -31,6 +53,7 @@ async def lifespan(app: FastAPI):
     print("Agent initialized")
     yield
     agent_instance = None
+    file_watcher.stop_all()  # Stop all file watchers on shutdown
     print("Agent shutdown")
 
 
