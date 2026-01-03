@@ -52,13 +52,30 @@ async def health_check():
 
 
 @app.get("/preview/{session_id}/build")
-async def build_preview(session_id: str):
-    """Trigger a build for a session's project."""
+async def build_preview(session_id: str, background: bool = True):
+    """
+    Trigger a build for a session's project.
+    
+    Args:
+        background: If True (default), queue build in background (non-blocking, better UX)
+                   If False, wait for build to complete (blocking)
+    """
     try:
-        result = await build_service.build_project(session_id, force_rebuild=True)
+        if background:
+            # Queue build (non-blocking - better than lovable!)
+            result = await build_service.queue_build(session_id, force_rebuild=True)
+        else:
+            # Run build directly (blocking)
+            result = await build_service.build_project(session_id, force_rebuild=True)
         return result
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+@app.get("/preview/{session_id}/build/logs")
+async def get_build_logs(session_id: str):
+    """Get build logs for a session."""
+    return {"logs": build_service.get_build_logs(session_id)}
 
 
 @app.get("/preview/{session_id}/build/status")

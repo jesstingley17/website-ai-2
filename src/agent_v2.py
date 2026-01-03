@@ -24,6 +24,10 @@ class MessageType(Enum):
     UPDATE_IN_PROGRESS = "update_in_progress"
     UPDATE_FILE = "update_file"
     UPDATE_COMPLETED = "update_completed"
+    BUILD_STARTED = "build_started"
+    BUILD_PROGRESS = "build_progress"
+    BUILD_COMPLETED = "build_completed"
+    BUILD_ERROR = "build_error"
 
 
 @dataclass
@@ -187,4 +191,14 @@ class Agent:
         yield Message.new(
             MessageType.UPDATE_COMPLETED, {}, session_id=session_id
         ).to_dict()
+        
+        # Automatically trigger build after code changes (better than lovable!)
+        yield Message.new(
+            MessageType.BUILD_STARTED,
+            {"message": "Building your changes..."},
+            session_id=session_id
+        ).to_dict()
+        
+        # Queue build in background (non-blocking)
+        await build_service.queue_build(session_id, force_rebuild=True)
 
