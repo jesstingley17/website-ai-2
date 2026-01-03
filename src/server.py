@@ -5,13 +5,15 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
+from pathlib import Path
 
 from .agent_v2 import Agent, MessageType
 from .config import config, Config
 from .code_executor import code_executor
+from .build_service import build_service
 
 # Validate configuration on startup
 Config.validate()
@@ -49,9 +51,69 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/preview/{session_id}/build")
+async def build_preview(session_id: str):
+    """Trigger a build for a session's project."""
+    try:
+        result = await build_service.build_project(session_id, force_rebuild=True)
+        return result
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.get("/preview/{session_id}/build/status")
+async def build_status(session_id: str):
+    """Get build status for a session."""
+    return build_service.get_build_status(session_id)
+
+
+@app.get("/preview/{session_id}/{full_path:path}")
+async def serve_preview_files(session_id: str, full_path: str, request: Request):
+    """Serve built files for a session - handles all paths under /preview/{session_id}/."""
+    build_path = build_service.get_build_path(session_id)
+    
+    if build_path and build_path.exists():
+        # Clean the path and serve the file
+        file_path = build_path / full_path.lstrip("/")
+        
+        # Security: ensure path is within build directory
+        try:
+            file_path = file_path.resolve()
+            build_path_resolved = build_path.resolve()
+            if not str(file_path).startswith(str(build_path_resolved)):
+                # Path traversal attempt - serve index.html
+                full_path = ""
+        except:
+            full_path = ""
+        
+        if full_path and file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        
+        # Fall back to index.html for SPA routing
+        index_path = build_path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+    
+    # Fall back to simple preview if no build exists
+    return await preview_session_simple(session_id)
+
+
 @app.get("/preview/{session_id}")
-async def preview_session(session_id: str):
-    """Serve a preview HTML page for a session's code."""
+async def serve_preview_root(session_id: str):
+    """Serve the preview root - serves index.html or simple preview."""
+    build_path = build_service.get_build_path(session_id)
+    
+    if build_path and build_path.exists():
+        index_path = build_path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+    
+    # Fall back to simple preview if no build exists
+    return await preview_session_simple(session_id)
+
+
+async def preview_session_simple(session_id: str):
+    """Simple preview using React CDN (fallback when build not available)."""
     try:
         # Load code files for this session
         file_map, package_json = code_executor.load_code(session_id)

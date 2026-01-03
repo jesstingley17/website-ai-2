@@ -85,6 +85,111 @@ class CodeExecutor:
 
         with open(project_path / "package.json", "w") as f:
             json.dump(package_json, f, indent=2)
+        
+        # Create vite.config.ts
+        vite_config = """import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    outDir: "dist",
+  },
+});
+"""
+        with open(project_path / "vite.config.ts", "w") as f:
+            f.write(vite_config)
+        
+        # Create index.html
+        index_html = """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+"""
+        with open(project_path / "index.html", "w") as f:
+            f.write(index_html)
+        
+        # Create tsconfig.json
+        tsconfig = {
+            "compilerOptions": {
+                "target": "ES2020",
+                "useDefineForClassFields": True,
+                "lib": ["ES2020", "DOM", "DOM.Iterable"],
+                "module": "ESNext",
+                "skipLibCheck": True,
+                "moduleResolution": "bundler",
+                "allowImportingTsExtensions": True,
+                "resolveJsonModule": True,
+                "isolatedModules": True,
+                "noEmit": True,
+                "jsx": "react-jsx",
+                "strict": True,
+                "noUnusedLocals": True,
+                "noUnusedParameters": True,
+                "noFallthroughCasesInSwitch": True,
+            },
+            "include": ["src"],
+        }
+        with open(project_path / "tsconfig.json", "w") as f:
+            json.dump(tsconfig, f, indent=2)
+        
+        # Create basic main.tsx if it doesn't exist
+        main_tsx_path = src_path / "main.tsx"
+        if not main_tsx_path.exists():
+            main_tsx = """import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+"""
+            with open(main_tsx_path, "w") as f:
+                f.write(main_tsx)
+        
+        # Create basic App.tsx if it doesn't exist
+        app_tsx_path = src_path / "App.tsx"
+        if not app_tsx_path.exists():
+            app_tsx = """export default function App() {
+  return (
+    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <h1>Welcome to your app!</h1>
+      <p>Start building your application here.</p>
+    </div>
+  );
+}
+"""
+            with open(app_tsx_path, "w") as f:
+                f.write(app_tsx)
+        
+        # Create basic index.css
+        index_css_path = src_path / "index.css"
+        if not index_css_path.exists():
+            index_css = """* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+"""
+            with open(index_css_path, "w") as f:
+                f.write(index_css)
 
         return {
             "url": None,  # Will be set when code is generated and served
