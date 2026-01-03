@@ -85,9 +85,6 @@ async def preview_session(session_id: str):
             app_code = code_map[app_file]
         
         # Generate HTML with React from CDN
-        # Escape the code for HTML
-        escaped_code = app_code.replace('`', '\\`').replace('${', '\\${')
-        
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
