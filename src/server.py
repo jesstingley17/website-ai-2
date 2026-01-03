@@ -14,6 +14,7 @@ from .agent_v2 import Agent, MessageType
 from .config import config, Config
 from .code_executor import code_executor
 from .build_service import build_service
+from .websocket_manager import websocket_manager
 
 # Validate configuration on startup
 Config.validate()
@@ -212,8 +213,8 @@ async def preview_session_simple(session_id: str):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time communication."""
-    await websocket.accept()
-
+    session_id: str | None = None
+    
     try:
         while True:
             # Receive message
@@ -228,6 +229,9 @@ async def websocket_endpoint(websocket: WebSocket):
             match msg.get("type"):
                 case MessageType.USER.value:
                     session_id = msg["data"]["session_id"]
+                    # Connect to session for build progress updates
+                    await websocket_manager.connect(websocket, session_id)
+                    
                     feedback = msg["data"]["text"]
 
                     # Stream responses
@@ -238,6 +242,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 case MessageType.INIT.value:
                     session_id = msg["data"]["session_id"]
+                    # Connect to session for build progress updates
+                    await websocket_manager.connect(websocket, session_id)
+                    
                     exists = await agent_instance.init(session_id=session_id)
 
                     from .code_executor import code_executor
@@ -261,6 +268,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 case MessageType.LOAD_CODE.value:
                     session_id = msg["data"]["session_id"]
+                    # Connect to session for build progress updates
+                    await websocket_manager.connect(websocket, session_id)
+                    
                     code_data = await agent_instance.load_code(session_id=session_id)
 
                     response = {
@@ -276,10 +286,17 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_json({"error": f"Unknown message type: {msg.get('type')}"})
 
     except WebSocketDisconnect:
+        if session_id:
+            websocket_manager.disconnect(websocket, session_id)
         print("Client disconnected")
     except Exception as e:
+        if session_id:
+            websocket_manager.disconnect(websocket, session_id)
         print(f"WebSocket error: {e}")
-        await websocket.send_json({"error": str(e)})
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
 
 
 if __name__ == "__main__":

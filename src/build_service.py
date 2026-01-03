@@ -11,6 +11,11 @@ from typing import Optional, Callable, AsyncGenerator
 from .config import config
 from .code_executor import code_executor
 
+# Import websocket manager (avoid circular import)
+def get_websocket_manager():
+    from .websocket_manager import websocket_manager
+    return websocket_manager
+
 
 class BuildStatus(Enum):
     """Build status enumeration."""
@@ -42,13 +47,72 @@ class BuildService:
         if len(self.build_logs[session_id]) > 100:
             self.build_logs[session_id] = self.build_logs[session_id][-100:]
         
-        # Call progress callback if set
+        # Broadcast log via WebSocket (real-time updates!)
+        asyncio.create_task(self._broadcast_build_progress(session_id, {
+            "type": "build_progress",
+            "message": message,
+            "logs": self.build_logs[session_id][-20:],  # Last 20 log lines
+        }))
+        
+        # Call progress callback if set (for backwards compatibility)
         if session_id in self.build_progress_callbacks:
             callback = self.build_progress_callbacks[session_id]
             try:
                 callback({"type": "log", "message": message})
             except Exception as e:
                 print(f"Error in progress callback: {e}")
+    
+    async def _broadcast_build_progress(self, session_id: str, data: dict):
+        """Broadcast build progress to WebSocket connections."""
+        try:
+            ws_manager = get_websocket_manager()
+            message = {
+                "id": str(uuid.uuid4()),
+                "type": "build_progress",
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+                "session_id": session_id,
+            }
+            await ws_manager.broadcast_to_session(session_id, message)
+        except Exception as e:
+            print(f"Error broadcasting build progress: {e}")
+    
+    async def _broadcast_build_completion(self, session_id: str, build_time: float):
+        """Broadcast build completion to WebSocket connections."""
+        try:
+            ws_manager = get_websocket_manager()
+            message = {
+                "id": str(uuid.uuid4()),
+                "type": "build_completed",
+                "data": {
+                    "status": "success",
+                    "build_time": build_time,
+                    "message": f"Build completed successfully in {build_time:.2f}s",
+                },
+                "timestamp": int(time.time() * 1000),
+                "session_id": session_id,
+            }
+            await ws_manager.broadcast_to_session(session_id, message)
+        except Exception as e:
+            print(f"Error broadcasting build completion: {e}")
+    
+    async def _broadcast_build_error(self, session_id: str, error: str):
+        """Broadcast build error to WebSocket connections."""
+        try:
+            ws_manager = get_websocket_manager()
+            message = {
+                "id": str(uuid.uuid4()),
+                "type": "build_error",
+                "data": {
+                    "status": "error",
+                    "error": error,
+                },
+                "timestamp": int(time.time() * 1000),
+                "session_id": session_id,
+            }
+            await ws_manager.broadcast_to_session(session_id, message)
+        except Exception as e:
+            print(f"Error broadcasting build error: {e}")
     
     def set_progress_callback(self, session_id: str, callback: Callable):
         """Set a callback for build progress updates."""
@@ -220,6 +284,9 @@ class BuildService:
             self.build_times[session_id] = build_time
             self._add_log(session_id, f"Build completed successfully in {build_time:.2f}s")
             
+            # Broadcast build completion (real-time update!)
+            asyncio.create_task(self._broadcast_build_completion(session_id, build_time))
+            
             return {
                 "status": BuildStatus.SUCCESS.value,
                 "message": "Build completed successfully",
@@ -231,6 +298,7 @@ class BuildService:
             error_msg = "Build timed out after 5 minutes"
             self.build_errors[session_id] = error_msg
             self._add_log(session_id, f"Error: {error_msg}")
+            asyncio.create_task(self._broadcast_build_error(session_id, error_msg))
             return {
                 "status": BuildStatus.ERROR.value,
                 "error": error_msg,
@@ -240,6 +308,7 @@ class BuildService:
             error_msg = f"Build error: {str(e)}"
             self.build_errors[session_id] = error_msg
             self._add_log(session_id, f"Error: {error_msg}")
+            asyncio.create_task(self._broadcast_build_error(session_id, error_msg))
             return {
                 "status": BuildStatus.ERROR.value,
                 "error": error_msg,
