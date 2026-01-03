@@ -30,8 +30,10 @@ class CodeExecutor:
 
         if project_path.exists():
             # Project already exists
+            # TODO: In production, we need to serve the built files
+            # For now, return None so frontend doesn't try to load invalid URL
             return {
-                "url": f"http://localhost:3000/{session_id}",
+                "url": None,  # Will be set when code is generated and served
                 "session_id": session_id,
                 "exists": True,
             }
@@ -85,7 +87,7 @@ class CodeExecutor:
             json.dump(package_json, f, indent=2)
 
         return {
-            "url": f"http://localhost:3000/{session_id}",
+            "url": None,  # Will be set when code is generated and served
             "session_id": session_id,
             "exists": False,
         }
