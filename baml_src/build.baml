@@ -15,20 +15,64 @@ class Message {
     content string
 }
 
+// Claude 3.5 Sonnet - High-reasoning Planner (Chat Planning)
+client<llm> ClaudeClient {
+  provider anthropic
+  options {
+    model "claude-3-5-sonnet-latest"
+    api_key env.ANTHROPIC_API_KEY
+  }
+}
+
+// GPT-4o - Vision/Legacy (Quick UI Edits and Vision Analysis)
 client<llm> OpenAIClient {
   provider openai
   options {
-    model o4-mini
+    model "gpt-4o"
     api_key env.OPENAI_API_KEY
   }
 }
 
+// Gemini 2.5 Flash equivalent - Low-latency Coder (Quick UI Edits)
+// Using GPT-4o-mini as fallback until Gemini support is available in BAML
+client<llm> FastCodingClient {
+  provider openai
+  options {
+    model "gpt-4o-mini"
+    api_key env.OPENAI_API_KEY
+  }
+}
+
+function PlanCodeChanges(history: Message[], feedback: string) -> string {
+    client ClaudeClient
+    
+    prompt #"
+    {{ _.role("system") }}
+    You are an expert full-stack developer using React, Tailwind, and Supabase. Prefer shadcn/ui components. Always build mobile-responsive layouts. If requirements are ambiguous, ask clarifying questions before coding.
+    
+    Your role is to analyze user feedback and create a detailed plan for code changes. Focus on high-level architecture and reasoning.
+    
+    {{ _.role("user") }}
+    Given the following feedback: "{{ feedback }}"
+    
+    Analyze the request and create a comprehensive plan for implementing the changes. Consider:
+    - Core features to implement
+    - Design patterns and component structure
+    - Database schema changes if needed (Supabase)
+    - User experience considerations
+    
+    {{ ctx.output_format }}
+    "#
+}
+
 function EditCode(history: Message[], feedback: string, code_files: File[], package_json: string) -> CodeChanges {
-    client OpenAIClient
+    client FastCodingClient
 
     prompt #"
     {{ _.role("system") }}
-    You are BeamO, an AI editor that creates and modifies web applications. You assist users by making changes to their code in real-time. You understand that users can see a live preview of their application while you make code changes.
+    You are an expert full-stack developer using React, Tailwind, and Supabase. Prefer shadcn/ui components. Always build mobile-responsive layouts. If requirements are ambiguous, ask clarifying questions before coding. Use the 'diff' strategy for file edits to preserve context.
+    
+    You are an AI editor that creates and modifies web applications. You assist users by making changes to their code in real-time. You understand that users can see a live preview of their application while you make code changes.
 
     <guidelines>
     Edit the code files based on the feedback/feature request, returning the updated files. If anything is unused, please remove it.
@@ -65,6 +109,14 @@ function EditCode(history: Message[], feedback: string, code_files: File[], pack
       - Do not hesitate to extensively use console logs to follow the flow of the code. This will be very helpful when debugging.
       - Do not include any tags like <CODE> <NEWFILE> <FILEPATH> in your response.
       - Make sure App.tsx points to the new features you've created.
+    
+    # Supabase Integration Guidelines
+    - When backend functionality is needed, use Supabase:
+      - Use @supabase/supabase-js for client-side database operations
+      - Create tables and relationships as needed in Supabase
+      - Use Supabase Auth for authentication
+      - Use Supabase Storage for file uploads
+      - Use Supabase Edge Functions for serverless functions when needed
     </guidelines>
 
     Here is the conversation history between you and the user:
