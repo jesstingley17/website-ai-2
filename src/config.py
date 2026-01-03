@@ -26,6 +26,9 @@ class Config:
 
     # Code execution (local file system path)
     PROJECTS_DIR = os.getenv("PROJECTS_DIR", "./projects")
+    
+    # Backend URL for preview links (set this to your Railway/public URL)
+    BACKEND_URL = os.getenv("BACKEND_URL", "https://website-ai-2-production.up.railway.app")
 
     @classmethod
     def validate(cls):

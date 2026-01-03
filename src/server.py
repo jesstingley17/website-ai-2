@@ -7,9 +7,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from .agent_v2 import Agent, MessageType
 from .config import config, Config
+from .code_executor import code_executor
 
 # Validate configuration on startup
 Config.validate()
@@ -47,6 +49,90 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/preview/{session_id}")
+async def preview_session(session_id: str):
+    """Serve a preview HTML page for a session's code."""
+    try:
+        # Load code files for this session
+        file_map, package_json = code_executor.load_code(session_id)
+        
+        # Also check database
+        from .database import db
+        db_files = db.get_code_files(session_id)
+        if db_files:
+            file_map = {k: v.encode("utf-8") for k, v in db_files.items()}
+        
+        # Convert bytes to strings
+        code_map = {path: content.decode("utf-8") if isinstance(content, bytes) else content 
+                   for path, content in file_map.items()}
+        
+        # Find App.tsx or App.jsx (main component)
+        app_file = None
+        for path in code_map.keys():
+            if path.endswith("App.tsx") or path.endswith("App.jsx"):
+                app_file = path
+                break
+        
+        if not app_file:
+            # If no App file, create a simple default
+            app_code = """function App() {
+  return React.createElement('div', { style: { padding: '20px', fontFamily: 'sans-serif' } },
+    React.createElement('h1', null, 'Welcome to your app!'),
+    React.createElement('p', null, 'Start by creating an App.tsx or App.jsx file.')
+  );
+}"""
+        else:
+            app_code = code_map[app_file]
+        
+        # Generate HTML with React from CDN
+        # Escape the code for HTML
+        escaped_code = app_code.replace('`', '\\`').replace('${', '\\${')
+        
+        html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview - {session_id}</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }}
+        #root {{ width: 100%; min-height: 100vh; }}
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const {{ useState, useEffect, useRef, useCallback, useMemo, useContext, createContext, useReducer, useImperativeHandle, forwardRef, memo, useLayoutEffect, useDebugValue }} = React;
+        
+        // User's App component code
+        {app_code}
+        
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>"""
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        error_html = f"""<!DOCTYPE html>
+<html>
+<head><title>Preview Error</title></head>
+<body style="padding: 20px; font-family: sans-serif;">
+    <h1>Preview Error</h1>
+    <p>Error loading preview: {str(e)}</p>
+    <p>Session ID: {session_id}</p>
+</body>
+</html>"""
+        return HTMLResponse(content=error_html, status_code=500)
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time communication."""
@@ -80,6 +166,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     from .code_executor import code_executor
                     project_data = code_executor.create_project(session_id)
+                    
+                    # Set preview URL
+                    preview_url = f"{config.BACKEND_URL}/preview/{session_id}"
 
                     response = {
                         "id": str(uuid.uuid4()),
@@ -87,7 +176,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "data": {
                             "exists": exists,
                             "session_id": session_id,
-                            "url": project_data.get("url"),
+                            "url": preview_url,
                         },
                         "timestamp": int(time.time() * 1000),
                         "session_id": session_id,
